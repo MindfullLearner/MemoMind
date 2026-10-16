@@ -5,6 +5,7 @@ import streamlit as st
 from dotenv import load_dotenv
 from google import genai
 
+TOKEN_BUDGET = 4000
 # Load API configuration from .env
 load_dotenv()
 
@@ -33,8 +34,22 @@ if not API_KEY or not MODEL_NAME:
 client = genai.Client(api_key=API_KEY)
 
 # Initialize conversation history once per session
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
+if "conversation_summary" not in st.session_state:
+    st.session_state.conversation_summary = ""
+
+if "last_token_count" not in st.session_state:
+    st.session_state.last_token_count = 0
+
+if st.button("Reset Conversation", type="secondary"):
+    st.session_state.messages = []
+    st.session_state.conversation_summary = ""
+    st.session_state.last_token_count = 0
+    st.rerun()
+
 
 # Display previous messages
 for message in st.session_state.messages:
@@ -68,7 +83,16 @@ if prompt := st.chat_input("Type your message here..."):
                 "parts": [{"text": message["content"]}],
             }
         )
+    token_result = client.models.count_tokens(
+        model=MODEL_NAME,
+        contents=contents,
+    )
 
+    current_tokens = token_result.total_tokens
+    st.caption(
+        f"Estimated conversation tokens: "
+        f"{current_tokens:,} / {TOKEN_BUDGET:,}"
+    )
     # Generate the assistant's response
     with st.chat_message("assistant"):
         try:
