@@ -6,8 +6,8 @@ from dotenv import load_dotenv
 from google import genai
 
 TOKEN_BUDGET = 4000
-SUMMARIZE_AT = 3200
-KEEP_RECENT_MESSAGES = 9
+SUMMARIZE_AT = 100
+KEEP_RECENT_EXCHANGES = 4
 # Load API configuration from .env
 load_dotenv()
 
@@ -34,6 +34,44 @@ if not API_KEY or not MODEL_NAME:
 
 # Create the Gemini client
 client = genai.Client(api_key=API_KEY)
+
+
+def get_friendly_error(error):
+    """Convert Gemini API errors into helpful user messages."""
+
+    error_text = str(error).lower()
+
+    if "429" in error_text or "resource_exhausted" in error_text:
+        if (
+            "generate_content_free_tier_requests" in error_text
+            or "quota exceeded" in error_text
+        ):
+            return (
+                "Gemini API quota reached. Please wait until "
+                "your quota resets before trying again. "
+                "Your conversation is still available."
+            )
+
+        return (
+            "Gemini API rate limit reached. Please wait a "
+            "little before trying again."
+        )
+
+    if "503" in error_text or "unavailable" in error_text:
+        return (
+            "Gemini is temporarily unavailable. "
+            "Please try again later."
+        )
+
+    if "timeout" in error_text:
+        return (
+            "The request timed out. Please try again later."
+        )
+
+    return (
+        "Sorry, something went wrong while contacting Gemini. "
+        "Check the terminal for diagnostic details."
+    )
 
 def summarize_messages(older_messages, existing_summary):
     """Compress older conversation messages into a summary."""
@@ -81,22 +119,25 @@ Return only the updated, concise summary.
 
     return summary.strip()
 
+
 def build_contents(messages, summary):
-    """Build Gemini history with the summary included as context."""
+    """Build Gemini history with saved memory included."""
 
     contents = []
+    summary_added = False
 
-    for index, message in enumerate(messages):
+    for message in messages:
         text = message["content"]
 
-        # Add older conversation memory to the first user message.
-        if index == 0 and summary and message["role"] == "user":
+        # Attach the saved summary to the first user message.
+        if message["role"] == "user" and summary and not summary_added:
             text = (
-                "Context summary from earlier conversation:\n"
+                "Important context from earlier conversation:\n"
                 f"{summary}\n\n"
-                "Recent conversation:\n"
+                "Current user message:\n"
                 f"{text}"
             )
+            summary_added = True
 
         gemini_role = (
             "model"
@@ -112,6 +153,50 @@ def build_contents(messages, summary):
         )
 
     return contents
+
+def split_conversation(messages, keep_recent_exchanges=4):
+    """Split history into older and recent conversation exchanges."""
+
+    exchanges = []
+    current_exchange = []
+
+    for message in messages:
+        if message["role"] == "user":
+            # Save any previous exchange that hasn't been grouped yet.
+            if current_exchange:
+                exchanges.append(current_exchange)
+
+            current_exchange = [message]
+
+        elif message["role"] == "assistant":
+            if current_exchange:
+                current_exchange.append(message)
+                exchanges.append(current_exchange)
+                current_exchange = []
+
+    # Preserve a pending user message that has no assistant response yet.
+    if current_exchange:
+        exchanges.append(current_exchange)
+
+    if len(exchanges) <= keep_recent_exchanges:
+        return [], messages[:]
+
+    older_exchanges = exchanges[:-keep_recent_exchanges]
+    recent_exchanges = exchanges[-keep_recent_exchanges:]
+
+    older_messages = [
+        message
+        for exchange in older_exchanges
+        for message in exchange
+    ]
+
+    recent_messages = [
+        message
+        for exchange in recent_exchanges
+        for message in exchange
+    ]
+
+    return older_messages, recent_messages
 
 # Initialize conversation history once per session
 
@@ -161,18 +246,15 @@ if prompt := st.chat_input("Type your message here..."):
 
     current_tokens = token_result.total_tokens
 
-    # Summarize older complete exchanges when the threshold is reached.
-    if (
-        current_tokens > SUMMARIZE_AT
-        and len(st.session_state.messages) > KEEP_RECENT_MESSAGES
-    ):
-        older_messages = st.session_state.messages[
-            :-KEEP_RECENT_MESSAGES
-        ]
+    
+    # Split history into complete exchanges before summarizing.
+    older_messages, recent_messages = split_conversation(
+        st.session_state.messages,
+        KEEP_RECENT_EXCHANGES,
+    )
 
-        recent_messages = st.session_state.messages[
-            -KEEP_RECENT_MESSAGES:
-        ]
+    if current_tokens > SUMMARIZE_AT and older_messages:
+
 
         try:
             with st.spinner("Updating conversation memory..."):
@@ -203,8 +285,8 @@ if prompt := st.chat_input("Type your message here..."):
         except Exception as error:
             # Keep the original history if summarization fails.
             st.warning(
-                "Could not summarize older messages. "
-                "The existing conversation history has been preserved."
+                 "Could not update conversation memory. "
+                + get_friendly_error(error)
             )
             print(
                 f"Summarization failed: "
@@ -240,14 +322,15 @@ if prompt := st.chat_input("Type your message here..."):
                 {"role": "assistant", "content": answer}
             )
 
+        
         except Exception as error:
-            st.error(
-                "Sorry, I couldn't generate a response. "
-                "Check your model configuration and API access."
+            st.error(get_friendly_error(error))
+
+            print(
+                f"Gemini request failed: "
+                f"{type(error).__name__}: {error}"
             )
-            # Print diagnostic details in the terminal,
-            # not the API key or other secrets.
-            print(f"Gemini request failed: {type(error).__name__}: {error}")
+
 
 # Show conversation memory on every Streamlit rerun.
 with st.expander("🧠 View Conversation Memory", expanded=False):
