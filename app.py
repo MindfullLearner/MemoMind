@@ -11,13 +11,22 @@ from google import genai
 # --------------------------------------------------
 
 TOKEN_BUDGET = 4000
-SUMMARIZE_AT = 100  # Temporary testing threshold; increase later.
+SUMMARIZE_AT = 3200  # Temporary testing threshold; increase later.
 KEEP_RECENT_EXCHANGES = 4
 
 load_dotenv()
 
-API_KEY = os.getenv("GEMINI_API_KEY")
-MODEL_NAME = os.getenv("GEMINI_MODEL")
+API_KEY = (
+    st.secrets["GEMINI_API_KEY"]
+    if "GEMINI_API_KEY" in st.secrets
+    else os.getenv("GEMINI_API_KEY")
+)
+
+MODEL_NAME = (
+    st.secrets["GEMINI_MODEL"]
+    if "GEMINI_MODEL" in st.secrets
+    else os.getenv("GEMINI_MODEL")
+)
 
 st.set_page_config(
     page_title="MemoMind",
