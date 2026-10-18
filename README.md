@@ -1,6 +1,8 @@
 # MemoMind — Memory-Aware AI Chatbot
 
 MemoMind is a conversational AI chatbot built with **Python, Streamlit, and Google Gemini**. It maintains conversation history across multiple turns and summarizes older messages to preserve important context while reducing the amount of conversation history sent to the model.
+[MemoMind](https://memomind-skqnuaax4qwfxhrussf6v3.streamlit.app/)
+
 
 ## Features
 
