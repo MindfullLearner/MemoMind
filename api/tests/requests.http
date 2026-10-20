@@ -1,0 +1,41 @@
+
+### 1. Health check
+GET http://127.0.0.1:8000/health
+
+
+### 2. Chat — new conversation
+POST http://127.0.0.1:8000/chat
+Content-Type: application/json
+
+{
+  "message": "Explain prompt engineering in simple words."
+}
+
+
+### 3. Chat — continue a conversation
+# Replace the ID below with the conversation_id returned by the previous request.
+POST http://127.0.0.1:8000/chat
+Content-Type: application/json
+
+{
+  "message": "Give me an example.",
+  "conversation_id": "PASTE_CONVERSATION_ID_HERE"
+}
+
+
+### 4. Validation error — missing message
+POST http://127.0.0.1:8000/chat
+Content-Type: application/json
+
+{
+  "conversation_id": null
+}
+
+
+### 5. Streaming chat (SSE)
+POST http://127.0.0.1:8000/chat/stream
+Content-Type: application/json
+
+{
+  "message": "Explain prompt engineering in three short sentences."
+}
