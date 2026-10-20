@@ -151,3 +151,26 @@ Streaming errors are sent as SSE error events because the HTTP response may alre
 Activate the API virtual environment, then run:
 
 ```powershell
+python -m pytest -v
+```
+
+The tests mock chatbot functions so that endpoint tests do not require real Gemini API calls.
+
+## Limitations
+
+- Conversation history is stored in server memory and is cleared when the server restarts.
+- The current in-memory store is intended for demonstration and development, not multi-worker production deployment.
+- Conversation expiration, persistent storage, authentication, and per-user access controls are not implemented.
+
+## Project Structure
+
+```text
+api/
+├── main.py
+├── models.py
+├── chatbot.py
+├── requirements.txt
+├── README.md
+└── tests/
+    └── test_api.py
+```
