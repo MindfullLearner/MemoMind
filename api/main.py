@@ -1,7 +1,10 @@
 
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
 from models import ChatRequest, ChatResponse, HealthResponse
 from chatbot import generate_reply
 
@@ -10,6 +13,48 @@ app = FastAPI(
     description="REST API for the MemoMind chatbot",
     version="1.0.0",
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    request: Request,
+    exc: RequestValidationError,
+):
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": {
+                "code": "VALIDATION_ERROR",
+                "message": "The request data is invalid.",
+                "details": [
+                    {
+                        "field": ".".join(
+                            str(part) for part in error["loc"]
+                        ),
+                        "message": error["msg"],
+                    }
+                    for error in exc.errors()
+                ],
+            }
+        },
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(
+    request: Request,
+    exc: HTTPException,
+):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": {
+                "code": "HTTP_ERROR",
+                "message": str(exc.detail),
+            }
+        },
+        headers=exc.headers,
+    )
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -32,9 +77,10 @@ def chat(request: ChatRequest):
             detail=str(exc),
         ) from exc
     except Exception as exc:
+        # Keep internal exception details out of the API response.
         raise HTTPException(
             status_code=502,
-            detail="The chatbot could not generate a response.",
+            detail="The chatbot service could not generate a response.",
         ) from exc
 
     return ChatResponse(
