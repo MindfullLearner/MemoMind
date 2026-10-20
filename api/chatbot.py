@@ -57,3 +57,47 @@ def generate_reply(conversation_id: str, message: str) -> str:
     ]
 
     return reply
+
+def stream_reply(conversation_id: str, message: str):
+    """Stream a Gemini response and save the completed exchange."""
+
+    if not API_KEY:
+        raise RuntimeError("GEMINI_API_KEY is not configured.")
+
+    if not MODEL_NAME:
+        raise RuntimeError("GEMINI_MODEL is not configured.")
+
+    client = genai.Client(api_key=API_KEY)
+    history = conversation_store.get(conversation_id, [])
+
+    user_message = types.Content(
+        role="user",
+        parts=[types.Part.from_text(text=message)],
+    )
+
+    chunks = []
+
+    for chunk in client.models.generate_content_stream(
+        model=MODEL_NAME,
+        contents=[*history, user_message],
+    ):
+        text = chunk.text
+        if text:
+            chunks.append(text)
+            yield text
+
+    if not chunks:
+        raise RuntimeError("Gemini returned an empty response.")
+
+    reply = "".join(chunks)
+
+    assistant_message = types.Content(
+        role="model",
+        parts=[types.Part.from_text(text=reply)],
+    )
+
+    conversation_store[conversation_id] = [
+        *history,
+        user_message,
+        assistant_message,
+    ]

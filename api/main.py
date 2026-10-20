@@ -1,4 +1,7 @@
+import json
 
+from fastapi.responses import StreamingResponse
+from chatbot import stream_reply
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
@@ -7,6 +10,7 @@ from fastapi.responses import JSONResponse
 
 from models import ChatRequest, ChatResponse, HealthResponse
 from chatbot import generate_reply
+
 
 app = FastAPI(
     title="MemoMind Chatbot API",
@@ -86,4 +90,38 @@ def chat(request: ChatRequest):
     return ChatResponse(
         conversation_id=conversation_id,
         response=reply,
+    )
+
+@app.post("/chat/stream")
+def chat_stream(request: ChatRequest):
+    conversation_id = request.conversation_id or str(uuid4())
+
+    def event_stream():
+        # Send the conversation ID first so the client can reuse it.
+        yield (
+            "event: conversation\n"
+            f"data: {json.dumps({'conversation_id': conversation_id})}\n\n"
+        )
+
+        try:
+            for text in stream_reply(conversation_id, request.message):
+                yield f"data: {json.dumps({'text': text})}\n\n"
+
+            yield "event: done\ndata: {}\n\n"
+
+        except Exception:
+            # Avoid exposing API keys or internal exception details.
+            error = {
+                "code": "STREAM_ERROR",
+                "message": "The chatbot stream failed.",
+            }
+            yield f"event: error\ndata: {json.dumps(error)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )
